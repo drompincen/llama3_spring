@@ -1,0 +1,55 @@
+# -----------------------
+# OS-specific files
+# -----------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------
+# IntelliJ / JetBrains
+# -----------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# If using Gradle or Maven, IntelliJ may create additional files
+# See below for Maven/Gradle settings
+
+# -----------------------
+# Java build
+# -----------------------
+target/
+*.class
+*.log
+*.jar
+*.war
+*.ear
+
+# -----------------------
+# Maven specific
+# -----------------------
+# Optional: exclude the .mvn folder if you don't store wrappers
+.mvn/
+!/.mvn/wrapper/maven-wrapper.jar
+
+# -----------------------
+# Gradle specific
+# -----------------------
+.gradle/
+build/
+!gradle-wrapper.jar
+
+# -----------------------
+# Logs and temp files
+# -----------------------
+*.log
+*.tmp
+*.temp
+*.swp
+*~
+
+# -----------------------
+# Package managers
+# -----------------------
+node_modules/

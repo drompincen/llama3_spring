@@ -1,0 +1,33 @@
+# Server Configuration
+server:
+  port: 8080  # The port on which the application will run
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO  # Default logging level
+    com.example: DEBUG  # Logging level for your application's package
+
+# Spring Data Source Configuration
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb  # In-memory H2 database URL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update  # Automatically update the database schema
+    show-sql: true  # Show SQL statements in the logs
+
+# Exclude Specific Auto-Configurations
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.r2dbc.R2dbcAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.couchbase.CouchbaseAutoConfiguration
+# Application Specific Properties
+app:
+  name: MyApplication
+  description: This is a sample Spring Boot application configured with YAML.
