@@ -132,26 +132,35 @@ public class LlamaChatLanguageModelWrapper implements ChatLanguageModel {
     private String buildPromptFromMemory() {
         StringBuilder sb = new StringBuilder();
         for (ChatMessage message : chatMemory.messages()) {
+
             if (message instanceof UserMessage) {
-                sb.append("User: ").append(message).append("\n");
+                sb.append("User: ").append(message.toString()).append("\n");
+
             } else if (message instanceof AiMessage) {
-                sb.append("Assistant: ").append(message).append("\n");
+                sb.append("Assistant: ").append(message.toString()).append("\n");
+
+            } else if (message instanceof SystemMessage) {
+                sb.append("System: ").append(message.toString()).append("\n");
+
             } else {
-                // handle SystemMessage or other custom types if needed
-                sb.append(message).append(": ").append(message).append("\n");
+                // For any other custom type, just prepend the role
+                sb.append(message).append(": ").append(message.toString()).append("\n");
             }
         }
         return sb.toString();
     }
 
+
     private String extractLastUserMessage(List<ChatMessage> messages) {
-        String userLastMessage = null;
         for (int i = messages.size() - 1; i >= 0; i--) {
-            if (messages.get(i) instanceof UserMessage) {
-                userLastMessage = messages.get(i).toString();
-                break;
+            ChatMessage msg = messages.get(i);
+            if (msg instanceof UserMessage) {
+                // Return the "toString()" of the user message once
+                return msg.toString();
             }
         }
-        return userLastMessage;
+        return null;
     }
+
+
 }
