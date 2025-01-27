@@ -20,10 +20,10 @@ public class LlamaController {
     @GetMapping("/generate")
     public String generate(@RequestParam String prompt) {
         // Use the app.model.LlamaLanguageModel to generate a response
-        Response<String> response = llamaLanguageModel.generate(prompt);
-        System.out.println("Response is : "+response.content());
+        String response = assistantService.chat(prompt);
+        System.out.println("Response is : "+response);
         // Return the generated text
-        return response.content();
+        return response;
     }
     @GetMapping("/time")
     public String getTime(@RequestParam String prompt) {
