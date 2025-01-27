@@ -1,10 +1,7 @@
 package app.model;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import dev.langchain4j.exception.UnsupportedFeatureException;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -23,144 +20,145 @@ public class LlamaChatLanguageModelWrapper implements ChatLanguageModel {
 
     private final ChatMemory chatMemory;
     private final LlamaService llamaService;
-
-    // Inject your tool if you want to call it programmatically
     private final TimeTool timeTool;
 
     @Autowired
     public LlamaChatLanguageModelWrapper(ChatMemory chatMemory, TimeTool timeTool) throws IOException {
-        // Reuse your LlamaService with whichever model you want
         this.llamaService = new LlamaService(LlamaService.MODEL);
         this.chatMemory = chatMemory;
         this.timeTool = timeTool;
     }
 
-    /**
-     * Minimal method required by ChatLanguageModel:
-     * Generate a response given a list of ChatMessage objects (no tools).
-     */
+    @Override
     public Response<AiMessage> generate(List<ChatMessage> messages) {
-        // Add all incoming messages to memory
+
+        // ----------------------------------------------------------
+        // 1) SINGLE-TURN usage: clear old memory each time
+        // ----------------------------------------------------------
+        chatMemory.clear();
+
+        // 2) Add only the incoming messages
         for (ChatMessage msg : messages) {
             chatMemory.add(msg);
         }
 
-        // Check if the user asked for "time"
-        String userLastMessage = extractLastUserMessage(messages);
-        if (userLastMessage != null && userLastMessage.toLowerCase().contains("time")) {
-            // Force-call the TimeTool
+        // If last user message mentions "time", add a SystemMessage with current time
+        String lastUserMessage = extractLastUserMessage(messages);
+        if (lastUserMessage != null && lastUserMessage.toLowerCase().contains("time")) {
             String currentTime = timeTool.getCurrentTime();
-
-            // Put the tool’s response into memory so Llama sees it
-            // We can add it as a SystemMessage or just an AiMessage.
-            // SystemMessage is often used for context.
             chatMemory.add(new SystemMessage("Tool used: TimeTool => " + currentTime));
         }
 
-        // Build the final prompt from memory
+        // ----------------------------------------------------------
+        // 3) Build the final prompt from memory & print for debugging
+        // ----------------------------------------------------------
         String prompt = buildPromptFromMemory();
+        System.out.println("******** PROMPT ********\n" + prompt + "\n************************");
 
-        // Generate response
-        String generatedText = llamaService.generateResponse(prompt, 100, 0.7f);
-        AiMessage aiMessage = new AiMessage(generatedText);
+        // ----------------------------------------------------------
+        // 4) Generate Llama response
+        // ----------------------------------------------------------
+        String rawResponse = llamaService.generateResponse(prompt, 100, 0.7f);
 
-        // Save AI response in memory
-        chatMemory.add(aiMessage);
+        // Optionally strip out those special tokens if you like
+        String cleanedResponse = removeSpecialTokens(rawResponse);
 
-        // Calculate token usage (dummy example)
+        // Print the raw or cleaned response for debugging
+        System.out.println("******** RAW RESPONSE ********\n" + rawResponse + "\n******************************");
+        System.out.println("******** CLEANED RESPONSE ********\n" + cleanedResponse + "\n*********************************");
+
+        // Construct an AiMessage from the cleaned text
+        AiMessage aiMessage = new AiMessage(cleanedResponse);
+
+        // ----------------------------------------------------------
+        // 5) Decide if you want to store the AI response in memory
+        //    For single-turn usage, you can skip storing it.
+        // ----------------------------------------------------------
+        // chatMemory.add(aiMessage); // Omit for single-turn usage
+
+        // ----------------------------------------------------------
+        // 6) Token usage (just a rough example)
+        // ----------------------------------------------------------
         int inputTokens = prompt.split("\\s+").length;
-        int outputTokens = generatedText.split("\\s+").length;
+        int outputTokens = cleanedResponse.split("\\s+").length;
         TokenUsage tokenUsage = new TokenUsage(inputTokens, outputTokens, inputTokens + outputTokens);
 
-        // Return final
+        // Return the final
         return new Response<>(aiMessage, tokenUsage, FinishReason.STOP);
     }
 
-    /**
-     * When multiple tools are provided.
-     * You can choose how to interpret them. This is a trivial example.
-     */
+    // If you handle multiple tools
     @Override
     public Response<AiMessage> generate(List<ChatMessage> messages, List<ToolSpecification> toolSpecifications) {
         if (toolSpecifications == null || toolSpecifications.isEmpty()) {
-            // No tools to consider => fallback to no-tool generate
             return generate(messages);
         }
-
-        // For demonstration, we’ll just check if the user is asking for the time
-        // If so, we call the timeTool and incorporate that into the final answer.
-        String userLastMessage = extractLastUserMessage(messages);
-        if (userLastMessage != null && userLastMessage.toLowerCase().contains("time")) {
-            String currentTime = timeTool.getCurrentTime();
-            // You can decide how the AI might incorporate the tool response
-            // e.g. “The current time is X” or you can pass it into Llama as additional context
-            userLastMessage += "\nUser wants the time: " + currentTime;
-        }
-
-        // Optionally, build a new prompt that includes the above “time” snippet
-        // Or just pass the user messages as usual
         return generate(messages);
     }
 
-    /**
-     * When exactly one tool is "required".
-     * Usually you’d do something more advanced, like pass usage instructions to Llama.
-     * This example simply demonstrates how you *could* call that single tool if appropriate.
-     */
+    // If exactly one tool is required
     @Override
     public Response<AiMessage> generate(List<ChatMessage> messages, ToolSpecification toolSpecification) {
-        // This default interface method *requires* the single tool, so let's interpret that:
-        // We'll do the same check as above
         if (toolSpecification == null) {
             throw new UnsupportedFeatureException("No tool passed, but toolChoice=REQUIRED was used");
         }
-
-        // Potentially check if toolSpecification corresponds to TimeTool
-        // For now, just check user text
-        String userLastMessage = extractLastUserMessage(messages);
-        if (userLastMessage != null && userLastMessage.toLowerCase().contains("time")) {
-            String currentTime = timeTool.getCurrentTime();
-            userLastMessage += "\nUser wants the time: " + currentTime;
-        }
-
         return generate(messages);
     }
 
-    // ----------------------------------------------------------------------------
-    // Optional: utility to build prompt from chatMemory
-    // ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------
+    // Helper: builds a single prompt string from the memory
+    // ----------------------------------------------------------------
     private String buildPromptFromMemory() {
         StringBuilder sb = new StringBuilder();
-        for (ChatMessage message : chatMemory.messages()) {
+        for (ChatMessage msg : chatMemory.messages()) {
+            String content = extractMessageContent(msg);
 
-            if (message instanceof UserMessage) {
-                sb.append("User: ").append(message.toString()).append("\n");
-
-            } else if (message instanceof AiMessage) {
-                sb.append("Assistant: ").append(message.toString()).append("\n");
-
-            } else if (message instanceof SystemMessage) {
-                sb.append("System: ").append(message.toString()).append("\n");
-
+            if (msg instanceof UserMessage) {
+                sb.append("User: ").append(content).append("\n");
+            } else if (msg instanceof AiMessage) {
+                sb.append("Assistant: ").append(content).append("\n");
+            } else if (msg instanceof SystemMessage) {
+                sb.append("System: ").append(content).append("\n");
             } else {
-                // For any other custom type, just prepend the role
-                sb.append(message).append(": ").append(message.toString()).append("\n");
+                sb.append(msg.type()).append(": ").append(content).append("\n");
             }
         }
         return sb.toString();
     }
 
-
+    // ----------------------------------------------------------------
+    // Helper: get last user message
+    // ----------------------------------------------------------------
     private String extractLastUserMessage(List<ChatMessage> messages) {
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage msg = messages.get(i);
             if (msg instanceof UserMessage) {
-                // Return the "toString()" of the user message once
-                return msg.toString();
+                return extractMessageContent(msg);
             }
         }
         return null;
     }
 
+    // ----------------------------------------------------------------
+    // Helper: get actual text from each message
+    // ----------------------------------------------------------------
+    private String extractMessageContent(ChatMessage msg) {
+        if (msg instanceof UserMessage userMsg) {
+            return userMsg.text();
+        } else if (msg instanceof AiMessage aiMsg) {
+            return aiMsg.text();
+        } else if (msg instanceof SystemMessage sysMsg) {
+            return sysMsg.text();
+        }
+        return "[Unknown message type: " + msg.type() + "]";
+    }
 
+    // ----------------------------------------------------------------
+    // Helper: remove special <|start_header_id|> tokens, etc.
+    // ----------------------------------------------------------------
+    private String removeSpecialTokens(String input) {
+        // Remove anything in form <|something|>
+        // Adjust the regex if you want to be more selective
+        return input.replaceAll("<\\|.*?\\|>", "");
+    }
 }
